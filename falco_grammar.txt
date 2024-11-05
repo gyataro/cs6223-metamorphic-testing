@@ -1,0 +1,57 @@
+rule: macro
+            | field space "exists"
+            | field space? operator space? value
+            | field space set_operator space set
+            | left_paren space? rule space? right_paren
+            | not space rule
+            | rule space and space rule
+            | rule space or space rule
+
+operator: "=" -> eq
+            | "!=" -> neq
+            | "<=" -> leq
+            | "<" -> ls
+            | ">=" -> geq
+            | ">" -> gtr
+            | "contains" -> contains
+            | "icontains" -> icontains
+            | "startswith" -> startswith
+            | "endswith" -> endswith
+            | "glob" -> glob
+            | "regex" -> regex
+            
+set_operator: "in" -> in
+            | "intersects" -> intersects
+            | "pmatch" -> pmatch
+
+class: /[a-z0-9]+/
+subclass: /[a-z0-9_]+/
+index: "[" DIGIT+ "]"
+field: class ("." subclass)+ (index)?
+
+macro: IDENTIFIER
+
+value: NUMBER | BOOLEAN | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
+BOOLEAN: "true" | "false"
+NUMBER: SIGNED_NUMBER
+UNQUOTED_STRING: /[a-zA-Z0-9_\.\/\\\-<>]+/
+SINGLE_QUOTED_STRING: /'[^']*'/
+DOUBLE_QUOTED_STRING: /"([^"\\]*(\\.[^"\\]*)*)"/
+
+set: left_paren (element (comma space? element)*)? right_paren
+element: NUMBER | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
+
+left_paren: "("
+right_paren: ")"
+space: /\s+/
+comma: ","
+and: "and"
+or: "or"
+not: "not"
+dot: "."
+
+%import common.ESCAPED_STRING
+%import common.LETTER
+%import common.SIGNED_NUMBER
+%import common.DIGIT
+%import common.CNAME -> IDENTIFIER
