@@ -91,7 +91,7 @@ class ExpandLists(Transformer):
     
 
 class FalcoParser:
-    def __init__(self, macros: Macros, lists: Lists, grammar_path: str = None):
+    def __init__(self, grammar_path: str = None):
         """
         Initializes Falco rule condition parser.
         Converts rule to syntax tree and vice versa.
@@ -100,16 +100,12 @@ class FalcoParser:
             base_path = os.path.abspath(os.path.dirname(__file__))
             grammar_path = os.path.join(base_path, "falco_grammar.txt")
         
-        self.macros = macros 
-        self.lists = lists
         self.grammar = open(grammar_path).read()
         self.parser = Lark(self.grammar, start="rule", parser='earley', lexer="dynamic", maybe_placeholders=False)
         self.reconstructor = Reconstructor(self.parser)
 
     def to_tree(self, rule: str) -> Tree:
         tree = self.parser.parse(rule)
-        tree = ExpandMarcos(self.macros, self).transform(tree)
-        tree = ExpandLists(self.lists).transform(tree)
         return tree
 
     def to_rule(self, tree: Tree) -> str:
