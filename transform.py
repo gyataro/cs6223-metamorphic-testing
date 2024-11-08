@@ -1,20 +1,15 @@
-import os
 import random
 
 from lark import Tree, Token, Visitor, Transformer, v_args
 
-from falco_parser import FalcoParser
-from utils import load_seeds, load_syscalls
-
 
 class ExtractSyscalls(Visitor):
-    def __init__(self, parser: 'FalcoParser') -> None:
+    def __init__(self) -> None:
         """
         Extract all syscalls present in the rule.
         We approach conservatively by assuming every syscall present is used.
         """
         super().__init__()
-        self.parser = parser
         self.syscalls = set()
 
     def visit(self, tree: Tree) -> set[str]:
@@ -53,15 +48,17 @@ class ExtractSyscalls(Visitor):
 
 
 class InsertDeadSubtrees(Transformer):
-    def __init__(self, syscalls: set[str], iterations: tuple[int, int], p: float) -> None:
+    def __init__(self, syscalls: set[str], iterations: tuple[int, int], p: float, seed: int) -> None:
         """Tranform a rule tree by randomly adding dead subtrees.
 
         Args:
             syscalls: vocabulary of all syscalls
             iterations: number of transformations in [min, max] range
             p: probability of adding subtree at each node
+            seed: for random number generator
         """
         super().__init__()
+        self.rng = random.Random(seed)
         self.whitelist_syscalls = None
         self.syscalls = syscalls
         self.min_iter, self.max_iter = iterations
@@ -101,20 +98,19 @@ class InsertDeadSubtrees(Transformer):
         0.5 * p% chance of inserting dead OR subtree
         0.5 * p% chance of inserting dead AND subtree
         """
-        if random.random() > self.p: return x
-        op = "or_op" if random.random() > 0.5 else "and_op"
-        add_pred = random.choice([
+        if self.rng.random() > self.p: return x
+        op = "or_op" if self.rng.random() > 0.5 else "and_op"
+        add_pred = self.rng.choice([
             self._add_eq_pred,
-            self._add_is_pred,
             self._add_set_pred
         ])
         children = [add_pred(op == "or_op"), x]
-        random.shuffle(children)
+        self.rng.shuffle(children)
         return Tree(op, children)
     
     def _add_eq_pred(self, or_op: bool) -> Tree:
         ops = Token("EQ", "=") if or_op else Token("NEQ", "!=") 
-        syscall = random.choice(self.whitelist_syscalls)
+        syscall = self.rng.choice(self.whitelist_syscalls)
         return Tree("pred", [
             Tree("field", [
                 Token("CLASS", "evt"),
@@ -125,7 +121,7 @@ class InsertDeadSubtrees(Transformer):
         ])
 
     def _add_is_pred(self, or_op: bool) -> Tree:
-        syscall = random.choice(self.whitelist_syscalls)
+        syscall = self.rng.choice(self.whitelist_syscalls)
         return Tree("pred", [
             Tree("field", [
                 Token("CLASS", "evt"),
@@ -138,8 +134,8 @@ class InsertDeadSubtrees(Transformer):
         ])
 
     def _add_set_pred(self, or_op: bool) -> Tree:
-        k = random.randint(1, len(self.whitelist_syscalls))
-        syscalls = random.sample(self.whitelist_syscalls, k)
+        k = self.rng.randint(1, len(self.whitelist_syscalls))
+        syscalls = self.rng.sample(self.whitelist_syscalls, k)
         pred = Tree("pred", [
             Tree("field", [
                 Token("CLASS", "evt"),

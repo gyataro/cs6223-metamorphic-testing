@@ -562,7 +562,7 @@ buffered_outputs: false
 # "first match wins" principle. However, enabling the `all` matching option may result in
 # a performance penalty. We recommend carefully testing this alternative setting before
 # deploying it in production.
-rule_matching: first
+rule_matching: all
 
 # [Stable] `outputs_queue`
 #

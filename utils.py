@@ -80,16 +80,16 @@ def load_seeds(rule_path: str, seed_path: str, parser: FalcoParser) -> list[tupl
     return list(seeds.items())
 
 
-def prepare_test_samples(c: str, c_prime: str, filename: str) -> None:
+def prepare_test_samples(c: str, c_prime: str, filename: str) -> list[dict[str, str]]:
     """
     Prepare a rule r and its metamorphic transformed rule r' to be loaded into Falco.
-    
+
     Args:
         c: original rule condition
         c_prime: transformed rule condition
     
     Returns:
-        str: the filename of temporary .yaml rule file
+        list[dict[str, str]]
     """
     r = {
         "rule": "r", 
@@ -105,7 +105,4 @@ def prepare_test_samples(c: str, c_prime: str, filename: str) -> None:
         "output": filename, 
         "priority": "CRITICAL"
     }
-
-    with open(filename, 'w') as f:
-        rules = yaml.dump([r, r_prime], default_flow_style=False, width=float("inf"))
-        f.write(rules)
+    return [r, r_prime]
