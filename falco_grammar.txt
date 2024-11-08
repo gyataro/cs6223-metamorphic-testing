@@ -1,54 +1,55 @@
-rule: macro
-            | field space "exists"
-            | field space? operator space? value
-            | field space set_operator space set
-            | left_paren space? rule space? right_paren
-            | not space rule
-            | rule space and space rule
-            | rule space or space rule
+_rule: MACRO
+            | field _space EXISTS
+            | field _space _operator _space _value
+            | field _space _set_operator _space set
+            | group
+            | not
+            | and
+            | or
 
-operator: "=" -> eq
-            | "!=" -> neq
-            | "<=" -> leq
-            | "<" -> ls
-            | ">=" -> geq
-            | ">" -> gtr
-            | "contains" -> contains
-            | "icontains" -> icontains
-            | "startswith" -> startswith
-            | "endswith" -> endswith
-            | "glob" -> glob
-            | "regex" -> regex
-            
-set_operator: "in" -> in
-            | "intersects" -> intersects
-            | "pmatch" -> pmatch
+group: "(" _space _rule _space ")"
+not: "not" _space _rule
+and: _rule _space "and" _space _rule
+or: _rule _space "or" _space _rule
 
-class: /[a-z0-9]+/
-subclass: /[a-z0-9_]+/
-index: "[" DIGIT+ "]"
-field: class ("." subclass)+ (index)?
+_space: " "*
+_operator: EQ | NEQ | LEQ | LS | GEQ | GTR | CONTAINS | ICONTAINS | STARTSWITH | ENDSWITH | GLOB | REGEX
+EXISTS: "exists"
+EQ: "="
+NEQ: "!="
+LEQ: "<="
+LS: "<"
+GEQ: ">="
+GTR: ">"
+CONTAINS: "contains"
+ICONTAINS: "icontains"
+STARTSWITH: "startswith"
+ENDSWITH: "endswith"
+GLOB: "glob"
+REGEX: "regex"
 
-macro: IDENTIFIER
+_set_operator: IN | INTERSECTS | PMATCH
+IN: "in"
+INTERSECTS: "intersects"
+PMATCH: "pmatch"
 
-value: NUMBER | BOOLEAN | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
+CLASS: /[a-z0-9]+/
+SUBCLASS: /[a-z0-9_]+/
+INDEX: "[" DIGIT+ "]"
+field: CLASS ("." SUBCLASS)+ (INDEX)?
+
+MACRO: IDENTIFIER
+
+_value: NUMBER | BOOLEAN | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
 BOOLEAN: "true" | "false"
 NUMBER: SIGNED_NUMBER
-UNQUOTED_STRING: /[a-zA-Z0-9_\.\/\\\-<>]+/
+UNQUOTED_STRING: /[a-zA-Z0-9_\.\/\\\-<>:\[\]]+/
 SINGLE_QUOTED_STRING: /'[^']*'/
 DOUBLE_QUOTED_STRING: /"([^"\\]*(\\.[^"\\]*)*)"/
 
-set: left_paren (element (comma space? element)*)? right_paren
-element: NUMBER | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
-
-left_paren: "("
-right_paren: ")"
-space: /\s+/
-comma: ","
-and: "and"
-or: "or"
-not: "not"
-dot: "."
+set: "(" (_element (_set_sep _element)*)? ")"
+_set_sep: "," " "*
+_element: NUMBER | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING | UNQUOTED_STRING
 
 %import common.ESCAPED_STRING
 %import common.LETTER

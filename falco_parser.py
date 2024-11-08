@@ -12,23 +12,12 @@ class ExpandMarcos(Transformer):
         self.parser = parser
 
     @v_args(tree=True)
-    def rule(self, tree: Tree):
-        expanded_children = []
-
-        for child in tree.children:
-            if isinstance(child, Tree) and child.data == 'macro':
-                token: Token = child.children[-1]
-                macro_name = token.value
-                macro = self.macros[macro_name]
-                subtree: Tree = self.parser.to_tree(macro)
-                
-                subtree = self.transform(subtree)
-                expanded_children.extend(subtree.children)
-            else:
-                expanded_children.append(child)
-
-        tree.children = expanded_children
-        return tree
+    def MACRO(self, name: str):
+        macro = self.macros[name]
+        subtree: Tree = self.parser.to_tree(macro)
+        subtree = self.transform(subtree)
+        assert len(subtree.children) == 1
+        return subtree.children[-1]
     
 
 class ExpandLists(Transformer):
@@ -36,9 +25,9 @@ class ExpandLists(Transformer):
         super().__init__()
         self.lists = lists
 
-    def _expand_element(self, element: str):
+    def _expand_list(self, list_name: str):
         new_elements = []
-        new_values: list = self.lists[element]
+        new_values: list = self.lists[list_name]
         for i, new_value in enumerate(new_values):
             if type(new_value) is int or type(new_value) is float:
                 element_type = "NUMBER"
@@ -49,12 +38,7 @@ class ExpandLists(Transformer):
             else:
                 element_type = "UNQUOTED_STRING"
 
-            element = Tree(data="element", children=[Token(type=element_type, value=new_value)])
-
-            if len(new_elements) > 0 and i < len(new_values):
-                comma = Tree(data="comma", children=[])
-                new_elements.append(comma)
-
+            element = Token(type=element_type, value=new_value)
             new_elements.append(element)
 
         return new_elements
@@ -64,28 +48,22 @@ class ExpandLists(Transformer):
         expanded = []
 
         for child in tree.children:
-            if not (isinstance(child, Tree) and child.data == "element"):
+            if not (isinstance(child, Token) and child.type == "UNQUOTED_STRING"):
                 expanded.append(child)
                 continue
 
-            element = child.children[-1]
+            list_name = child.value
 
-            if not element in self.lists:
+            if list_name not in self.lists:
                 expanded.append(child)
                 continue
 
-            new_elements = self._expand_element(element)
+            new_elements = self._expand_list(list_name)
 
             if len(new_elements) > 0:
                 expanded.extend(new_elements)
                 continue
-
-            # if list is empty, remove the previous space + comma
-            if isinstance(expanded[-1], Tree) and expanded[-1].data == "space": 
-                expanded.pop()
-            if isinstance(expanded[-1], Tree) and expanded[-1].data == "comma": 
-                expanded.pop()
-
+            
         tree.children = expanded
         return tree
     
@@ -101,7 +79,7 @@ class FalcoParser:
             grammar_path = os.path.join(base_path, "falco_grammar.txt")
         
         self.grammar = open(grammar_path).read()
-        self.parser = Lark(self.grammar, start="rule", parser='earley', lexer="dynamic", maybe_placeholders=False)
+        self.parser = Lark(self.grammar, start="_rule", parser='earley', lexer="dynamic", maybe_placeholders=False)
         self.reconstructor = Reconstructor(self.parser)
 
     def to_tree(self, rule: str) -> Tree:
