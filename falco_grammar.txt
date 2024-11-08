@@ -1,16 +1,18 @@
 _rule: MACRO
-            | field _space EXISTS
-            | field _space _operator _space _value
-            | field _space _set_operator _space set
-            | group
-            | not
-            | and
-            | or
+    | pred
+    | group
+    | not_op
+    | and_op
+    | or_op
+
+pred: field _space _operator _space _value
+    | field _space _set_operator _space set
+    | field _space EXISTS
 
 group: "(" _space _rule _space ")"
-not: "not" _space _rule
-and: _rule _space "and" _space _rule
-or: _rule _space "or" _space _rule
+not_op: "not" _space _rule
+and_op: _rule _space "and" _space _rule
+or_op: _rule _space "or" _space _rule
 
 _space: " "*
 _operator: EQ | NEQ | LEQ | LS | GEQ | GTR | CONTAINS | ICONTAINS | STARTSWITH | ENDSWITH | GLOB | REGEX

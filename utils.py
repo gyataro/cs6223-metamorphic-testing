@@ -7,6 +7,17 @@ from falco_parser import FalcoParser, ExpandMarcos, ExpandLists
 from entities import FalcoRule, Rules, Macros, Lists
 
 
+def load_syscalls(syscalls_path: str) -> set[str]:
+    """Load syscall vocabulary from .txt file.
+    """
+    syscalls = []
+
+    with open(syscalls_path) as f:
+        syscalls = f.read().splitlines()
+
+    return set(syscalls)
+
+
 def load_seeds(rule_path: str, seed_path: str, parser: FalcoParser) -> list[tuple[str, Tree]]:
     """Load and process all rules from a .yaml file, keep those listed in the seed corpus.
     """
