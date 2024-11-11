@@ -6,7 +6,7 @@ import tempfile
 import yaml
 import falco
 
-from logger import Logger, Entry
+from logger import Logger, RQ1Entry
 from falco_parser import FalcoParser
 from transform import ExtractSyscalls, InsertDeadSubtrees
 from utils import (
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     seeds = load_seeds(rule_path, seed_path, parser)
     blacklist_syscalls = {name: ExtractSyscalls().visit(tree) for (name, tree) in seeds}
     
-    for i in range(len(seeds)):
+    for i in range(ROUNDS):
         # Initialize and get random seed
         abort = False
         falco_process, falco_client = None, None
@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
                 # Record rules if they are interesting
                 if abort or not alert:
-                    logger.sample(i+1, label, rule)
+                    logger.sample(filename=f"{i+1}-{label}.txt", sample=rule)
 
                 # Cleanup: delete client, stop Falco, remove containers
                 try:
@@ -138,7 +138,7 @@ if __name__ == "__main__":
                 except Exception as e:
                     logger.log(f"\tCleanup failed: {e}")
                 finally:
-                    entry = Entry(
+                    entry = RQ1Entry(
                         round=i+1,
                         seed=seed_name,
                         label=label,

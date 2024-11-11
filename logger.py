@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Entry:
+class RQ1Entry:
     round: int
     seed: str
     label: str
@@ -17,6 +17,21 @@ class Entry:
     def __str__(self):
         return f"{self.round},{self.seed},{self.label},{self.length},{self.alert},{self.time},{self.returncode}"
 
+
+@dataclass
+class RQ2Entry:
+    n: int
+    exclude: list
+    seed: str
+    label: str
+    length: int
+    alert: bool
+    time: float
+    returncode: int
+
+    def __str__(self) -> str:
+        exclude = ";".join(self.exclude)
+        return f"{self.n},{exclude},{self.seed},{self.label},{self.length},{self.alert},{self.time},{self.returncode}"
 
 
 class Logger:
@@ -48,11 +63,11 @@ class Logger:
     def log(self, message: str):
         self.logger.info(message)
 
-    def entry(self, entry: Entry):
+    def entry(self, entry: RQ1Entry | RQ2Entry):
         with open(self.entries_path, "a") as f:
             f.write(f"{str(entry)}\n")
 
-    def sample(self, round: int, label: str, sample: str):
-        sample_path = os.path.join(self.logs_path, f"{round}-{label}.txt")
+    def sample(self, filename: str, sample: str):
+        sample_path = os.path.join(self.logs_path, f"{filename}.txt")
         with open(sample_path, "w") as f:
             f.write(sample)

@@ -1,0 +1,170 @@
+import os
+import time
+import random
+import tempfile
+import itertools
+
+import yaml
+import falco
+
+from logger import Logger, RQ2Entry
+from falco_parser import FalcoParser
+from transform import ExtractSyscalls, InsertDeadSubtrees
+from utils import (
+    load_syscalls, 
+    load_seeds,
+    run_falco,
+    run_attack,
+    get_alerts,
+    remove_containers
+)
+
+base_path = os.path.abspath(os.path.dirname(__file__))
+rule_path = os.path.join(base_path, "falco_rules.yaml")
+seed_path = os.path.join(base_path, "falco_seed.txt")
+falco_path = os.path.join(base_path, "falco_binary")
+falco_config_path = os.path.join(base_path, "falco.yaml")
+syscalls_path = os.path.join(base_path, "syscalls", "x86_64.txt")
+base_syscalls = [
+    "clone", "clone3", "fork", "vfork", "execve", "execveat", "close", "socket", 
+    "bind", "getsockopt", "setresuid", "setsid", "setuid", "setgid", "setpgid", "setresgid", 
+    "setsid", "capset", "chdir", "chroot", "fchdir"
+]
+
+
+def get_options(exclude: list[str]):
+    syscalls = [f"base_syscalls.custom_set[]={syscall}" for syscall in base_syscalls if syscall not in exclude]
+    options = ["-o", "base_syscalls.repair=false"]
+    for syscall in syscalls:
+        options.extend(["-o", syscall])
+    return options
+
+
+if __name__ == "__main__":
+    RNG_SEED = 42
+    ROUNDS = 10
+    SAMPLE_RNG = random.Random(RNG_SEED)
+    SYSCALLS = load_syscalls(syscalls_path)
+    
+    logger = Logger("rq2")
+    parser = FalcoParser()
+    mutator = InsertDeadSubtrees(SYSCALLS, iterations=(2, 10), p=0.1, seed=RNG_SEED)
+    seeds = load_seeds(rule_path, seed_path, parser)
+    blacklist_syscalls = {name: ExtractSyscalls().visit(tree) for (name, tree) in seeds}
+
+    for n in [1, 2, 3]:
+        for exclude_syscalls in itertools.combinations(base_syscalls, n):
+            for i, seed in enumerate(seeds):
+                # Initialize and get random seed
+                abort = False
+                falco_process, falco_client = None, None
+                seed_name, tree = SAMPLE_RNG.choice(seeds)
+                logger.log(f"n: {n}, exclude: {exclude_syscalls}, seed: {seed_name}")
+
+                # Insert dead subtrees into rule tree
+                try:
+                    logger.log(f"\tMutating rule")
+                    tree_prime = mutator.transform(tree, blacklist_syscalls[seed_name])
+                except Exception as e:
+                    logger.log(f"\tMutation failed: {e}")
+                    abort = True
+
+                if abort: continue
+
+                for t, label in [(tree, "r"), (tree_prime, "r'")]:
+                    with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp:
+                        # Prepare rule in temp .yaml file
+                        try:
+                            logger.log(f"\tPreparing rules at {tmp.name}")
+                            os.chmod(tmp.name, 0o777)
+                            rule = parser.to_rule(t)
+                            logger.log(f"\tLength: ({len(rule)})")
+                            rule_obj = {
+                                "rule": "r", 
+                                "desc": "r", 
+                                "condition": rule, 
+                                "output": tmp.name, 
+                                "priority": "CRITICAL"
+                            }
+                            with open(tmp.name, 'w') as f:
+                                rule_yaml = yaml.dump([rule_obj], default_flow_style=False, width=float("inf"))
+                                f.write(rule_yaml)
+                        except Exception as e:
+                            logger.log(f"\tPrepare rule failed: {e}")
+                            abort = True
+
+                        # Launch Falco with the rules
+                        if not abort:
+                            try:
+                                logger.log(f"\tLaunching Falco")
+                                options = get_options(exclude_syscalls)
+                                falco_process = run_falco(falco_path, falco_config_path, tmp.name, options)
+                            except Exception as e:
+                                logger.log(f"\tLaunch failed: \n{e}")
+                                abort = True
+
+                        # Initialize Falco client
+                        if not abort:
+                            try:
+                                falco_client = falco.Client(endpoint="unix:///run/falco/falco.sock", output_format="json")
+                                time.sleep(5)
+                            except Exception as e:
+                                logger.log(f"\tClient failed: {e}")
+                                abort = True
+
+                        # Launch attack
+                        if not abort:
+                            try:
+                                logger.log(f"\tLaunching attack")
+                                success = run_attack(seed_name)
+                            except Exception as e:
+                                logger.log(f"\tAttack failed: \n{e}")
+                                abort = True
+
+                            from datetime import datetime
+                            start_time = datetime.now().timestamp()
+                        
+                        # Check alerts
+                        if not abort:
+                            try:
+                                logger.log(f"\tChecking alerts")
+                                alert, alert_time = get_alerts(start_time, falco_client, tmp.name)
+                                alert_status = f"\033[0;32m{True}\033[0m" if alert else f"\033[0;31m{False}\033[0m"
+                                logger.log(f"\tChecked events: [r] {alert_status} ({alert_time:.5f})")
+                            except Exception as e:
+                                logger.log(f"\tCheck failed: {e}")
+                                abort = True
+
+                        # Record rules if they are interesting
+                        if abort or not alert:
+                            logger.sample(filename=f"{n}-{"-".join(exclude_syscalls)}-{i+1}-{label}.txt", sample=rule)
+
+                        # Cleanup: delete client, stop Falco, remove containers
+                        try:
+                            logger.log("\tCleanup")
+                            returncode = -9
+                            remove_containers()
+
+                            if falco_client: 
+                                del falco_client
+
+                            if falco_process: 
+                                falco_process.kill()
+                                returncode = falco_process.wait(5)
+
+                        except Exception as e:
+                            logger.log(f"\tCleanup failed: {e}")
+                        finally:
+                            entry = RQ2Entry(
+                                n=n,
+                                exclude=exclude_syscalls,
+                                seed=seed_name,
+                                label=label,
+                                length=len(rule),
+                                alert=alert,
+                                time=alert_time,
+                                returncode=returncode
+                            )
+                            logger.entry(entry)
+                            abort = False
+                            time.sleep(2)

@@ -87,10 +87,10 @@ def load_seeds(rule_path: str, seed_path: str, parser: FalcoParser) -> list[tupl
     return list(seeds.items())
 
 
-def run_falco(falco_path: str, falco_config_path: str, rule_file: str) -> subprocess.Popen:
+def run_falco(falco_path: str, falco_config_path: str, rule_file: str, options: list[str] = []) -> subprocess.Popen:
     """Run Falco.
     """
-    falco_command = [falco_path, "-c", falco_config_path, "-r", rule_file]
+    falco_command = [falco_path, "-c", falco_config_path, "-r", rule_file] + options
     falco_process = subprocess.Popen(falco_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     launch_logs = []
     success = False
