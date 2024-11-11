@@ -1,6 +1,13 @@
 import re
+import json
+import time
+import signal
+import subprocess
+from datetime import datetime
 
 import yaml
+import falco
+import docker
 from lark import Tree
 
 from falco_parser import FalcoParser, ExpandMarcos, ExpandLists
@@ -80,29 +87,109 @@ def load_seeds(rule_path: str, seed_path: str, parser: FalcoParser) -> list[tupl
     return list(seeds.items())
 
 
-def prepare_test_samples(c: str, c_prime: str, filename: str) -> list[dict[str, str]]:
+def run_falco(falco_path: str, falco_config_path: str, rule_file: str) -> subprocess.Popen:
+    """Run Falco.
     """
-    Prepare a rule r and its metamorphic transformed rule r' to be loaded into Falco.
+    falco_command = [falco_path, "-c", falco_config_path, "-r", rule_file]
+    falco_process = subprocess.Popen(falco_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    launch_logs = []
+    success = False
 
-    Args:
-        c: original rule condition
-        c_prime: transformed rule condition
-    
-    Returns:
-        list[dict[str, str]]
+    for line in falco_process.stderr:
+        launch_logs.append(line)
+        if "Starting gRPC server" in line:
+            success = True
+            break
+
+    if not success: 
+        falco_process.terminate()
+        raise ChildProcessError("\n".join(launch_logs))
+
+    return falco_process
+
+
+def run_attack(rule_name: str):
+    """Run Falco event-generator attack that corresponds to a specific rule by name.
     """
-    r = {
-        "rule": "r", 
-        "desc": "r", 
-        "condition": c, 
-        "output": filename, 
-        "priority": "CRITICAL"
-    }
-    r_prime = {
-        "rule": "r_prime", 
-        "desc": "r_prime", 
-        "condition": c_prime, 
-        "output": filename, 
-        "priority": "CRITICAL"
-    }
-    return [r, r_prime]
+    success = False
+    client = docker.from_env()
+    client.containers.run("falcosecurity/event-generator")
+    container = client.containers.run(
+        image="falcosecurity/event-generator",
+        command=["run", rule_name],
+        name="falco-eventgen",
+        remove=True,
+        detach=True,
+        auto_remove=True,
+        privileged=True,
+        userns_mode="host"
+    )
+
+    success = True
+    attack_logs = []
+    for line in container.logs(follow=True, stream=True):
+        attack_logs.append(line)
+        if "action executed" in line.decode('utf-8'):
+            success = True
+
+    if not success: raise ChildProcessError("\n".join(line))
+
+
+def get_alerts(start_time: float, client: falco.Client, rule_file: str) -> tuple[bool, float]:
+    """Check alerts produced by Falco
+    """
+    def _timeout(signum, frame):
+        raise TimeoutError()
+
+    try:
+        now = datetime.now()
+        alert_time = -1
+        alert = False
+        signal.signal(signal.SIGALRM, _timeout)
+        signal.alarm(30) 
+        for event in client.sub():
+            event: dict = json.loads(event)
+
+            if (event["rule"] == "r" and not alert and rule_file in event["output"]):
+                alert = True
+                event_time = event["output_fields"]['evt.time']
+                event_time = event_time[:event_time.index('.') + 7]
+                event_time = datetime.strptime(event_time, "%H:%M:%S.%f")
+                event_time = event_time.replace(year=now.year, month=now.month, day=now.day)  
+                alert_time = now.timestamp() - event_time.timestamp() # detect_time.timestamp() - start_time
+
+            if alert:
+                break
+
+    except TimeoutError:
+        pass
+
+    finally:
+        signal.alarm(0)  
+
+    return alert, alert_time
+
+                
+def remove_containers():
+    """Remove all stopped falcosecurity/event-generator containers used in attacks.
+    """
+    result = subprocess.run(
+        [
+            "docker", "ps", "-a", "--filter", f"ancestor=falcosecurity/event-generator", 
+            "--format", "{{.ID}} {{.Image}} {{.Status}}"
+        ],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    
+    containers = result.stdout.strip().split('\n')
+    
+    for container_info in containers:
+        if container_info:
+            container_id, _, status = container_info.split(maxsplit=2)
+            
+            # Check if the container is stopped (status contains "Exited")
+            if "Exited" in status:
+                print(f"\tRemove {container_id}")
+                subprocess.run(["docker", "rm", container_id], stdout=subprocess.PIPE, check=True)

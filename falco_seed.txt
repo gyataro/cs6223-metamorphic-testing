@@ -1,6 +1,5 @@
 syscall.DirectoryTraversalMonitoredFileRead
 syscall.ReadSensitiveFileTrustedAfterStartup
-syscall.RunShellUntrusted
 syscall.SystemUserInteractive
 syscall.NetcatRemoteCodeExecutionInContainer
 syscall.SearchPrivateKeysOrPasswords
