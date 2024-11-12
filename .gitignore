@@ -2,3 +2,7 @@ __pycache__
 falco
 falco_binary
 tester
+logs
+*.csv
+*.pdf
+*.png

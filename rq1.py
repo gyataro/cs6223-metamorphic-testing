@@ -28,7 +28,7 @@ syscalls_path = os.path.join(base_path, "syscalls", "x86_64.txt")
 
 if __name__ == "__main__":
     RNG_SEED = 42
-    ROUNDS = 10
+    ROUNDS = 10000
     SAMPLE_RNG = random.Random(RNG_SEED)
     SYSCALLS = load_syscalls(syscalls_path)
     
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         abort = False
         falco_process, falco_client = None, None
         seed_name, tree = SAMPLE_RNG.choice(seeds)
-        logger.log(f"Round {i+1}/{len(seeds)}: {seed_name}")
+        logger.log(f"Round {i+1}/{ROUNDS}: {seed_name}")
 
         # Insert dead subtrees into rule tree
         try:
