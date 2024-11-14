@@ -52,8 +52,9 @@ if __name__ == "__main__":
     seeds = load_seeds(rule_path, seed_path, parser)
     blacklist_syscalls = {name: ExtractSyscalls().visit(tree) for (name, tree) in seeds}
 
-    for n in [1, 2, 3]:
-        for exclude_syscalls in itertools.combinations(base_syscalls, n):
+    for n in [2]:
+        for a, exclude_syscalls in enumerate(itertools.combinations(base_syscalls, n)):
+            if a < 12: continue
             for i, seed in enumerate(seeds):
                 # Initialize and get random seed
                 abort = False

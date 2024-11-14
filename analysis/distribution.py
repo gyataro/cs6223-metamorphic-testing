@@ -16,7 +16,7 @@ df1 = df[df['label'] == 'r']
 df2 = df[df['label'] == "r'"] 
 
 # Plot the distribution of the columns
-fig, (ax, ax2) = plt.subplots(1, 2, sharex=False, sharey=False, facecolor='w')
+fig, (ax, ax2) = plt.subplots(1, 2, sharex=False, sharey=True, facecolor='w')
 
 # Plot the histogram (bin plot) for df1 (label 'r')
 sns.histplot(df1["time"], ax=ax, bins=25, kde=False, label=f'rule r', color='blue', binrange=[0, 0.1])
@@ -46,7 +46,6 @@ ax.set_xlabel('')
 ax.set_ylabel('')
 ax2.set_xlabel('')
 ax2.set_ylabel('')
-
 #plt.setp(plt.gcf().get_axes(), yticks=[])
 #ax2.set_yticks([]) 
 #ax2.set_yticklabels([])
